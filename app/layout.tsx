@@ -8,8 +8,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'HealthSecure - Your Lifetime Health Records',
-  description: 'Access your medical records safely with secure digital identity',
+  title: 'MediChain - Blockchain Medical Records',
+  description: 'Secure blockchain-based medical record management system',
   generator: 'v0.app',
   icons: {
     icon: [
