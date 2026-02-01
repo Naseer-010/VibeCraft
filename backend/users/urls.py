@@ -8,6 +8,8 @@ from .views import (
     PatientSearchView,
     DashboardStatsView,
     IPFSVerifyView,
+    AccessRequestView,
+    RevokeAccessView,
 )
 
 urlpatterns = [
@@ -27,6 +29,10 @@ urlpatterns = [
     
     # Patient search (for doctors)
     path('patients/<str:health_id>/', PatientSearchView.as_view(), name='patient_search'),
+    
+    # Access requests
+    path('access/', AccessRequestView.as_view(), name='access_requests'),
+    path('access/<int:request_id>/revoke/', RevokeAccessView.as_view(), name='revoke_access'),
     
     # IPFS verification
     path('ipfs/verify/<str:cid>/', IPFSVerifyView.as_view(), name='ipfs_verify'),

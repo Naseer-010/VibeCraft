@@ -85,6 +85,12 @@ class PatientProfile(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     age = models.PositiveIntegerField(null=True, blank=True)
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        blank=True,
+        null=True,
+        help_text="Profile picture image"
+    )
     health_id = models.CharField(
         max_length=20, 
         unique=True, 
@@ -121,6 +127,12 @@ class DoctorProfile(models.Model):
     medical_license = models.CharField(max_length=50, unique=True)
     specialization = models.CharField(max_length=100)
     hospital = models.CharField(max_length=200)
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        blank=True,
+        null=True,
+        help_text="Profile picture image"
+    )
     doctor_id = models.CharField(
         max_length=20, 
         unique=True, 
@@ -155,3 +167,60 @@ class DoctorProfile(models.Model):
     @property
     def full_name(self):
         return f"Dr. {self.first_name} {self.last_name}"
+
+
+class AccessRequest(models.Model):
+    """Access request from patient to doctor."""
+    
+    ACCESS_TYPE_CHOICES = (
+        ('FULL', 'Full Access'),
+        ('TEMPORARY', 'Temporary (30 days)'),
+        ('EMERGENCY', 'Emergency Only'),
+    )
+    
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REVOKED', 'Revoked'),
+    )
+    
+    patient = models.ForeignKey(
+        PatientProfile,
+        on_delete=models.CASCADE,
+        related_name='access_requests_sent'
+    )
+    doctor = models.ForeignKey(
+        DoctorProfile,
+        on_delete=models.CASCADE,
+        related_name='access_requests_received',
+        null=True,
+        blank=True,
+        help_text="If null, this is a general access grant (any doctor can request)"
+    )
+    doctor_id_requested = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Doctor ID if specific doctor was requested but not found"
+    )
+    access_type = models.CharField(
+        max_length=20,
+        choices=ACCESS_TYPE_CHOICES,
+        default='FULL'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='APPROVED'  # Auto-approve for now
+    )
+    granted_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-granted_at']
+        unique_together = ['patient', 'doctor']  # One request per patient-doctor pair
+    
+    def __str__(self):
+        doctor_name = self.doctor.full_name if self.doctor else self.doctor_id_requested
+        return f"{self.patient.full_name} -> {doctor_name} ({self.status})"
+

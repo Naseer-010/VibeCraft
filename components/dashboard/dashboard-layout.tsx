@@ -4,12 +4,12 @@ import React from "react"
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Clock, 
-  ShieldCheck, 
-  Activity, 
+import {
+  LayoutDashboard,
+  FileText,
+  Clock,
+  ShieldCheck,
+  Activity,
   Settings,
   ShieldCheckIcon,
   User,
@@ -36,6 +36,7 @@ const getDoctorNavItems = (t: (key: string) => string) => [
   { icon: User, labelKey: 'myPatients', href: '/dashboard/doctor/patients' },
   { icon: FileText, labelKey: 'addRecord', href: '/dashboard/doctor/add-record' },
   { icon: Clock, labelKey: 'recentActivity', href: '/dashboard/doctor/activity' },
+  { icon: Activity, labelKey: 'accessControl', href: '/dashboard/doctor/access' },
   { icon: ShieldCheck, labelKey: 'verifications', href: '/dashboard/doctor/verifications' },
   { icon: Settings, labelKey: 'settings', href: '/dashboard/doctor/settings' },
 ]
@@ -48,10 +49,10 @@ interface DashboardLayoutProps {
   currentPage?: string
 }
 
-export function DashboardLayout({ 
-  children, 
-  userName, 
-  userRole, 
+export function DashboardLayout({
+  children,
+  userName,
+  userRole,
   healthId,
   currentPage = '/dashboard'
 }: DashboardLayoutProps) {
@@ -78,7 +79,11 @@ export function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card flex flex-col">
         <div className="p-6 border-b border-border">
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => window.location.href = '/'}
+            title="Go to Home"
+          >
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <ShieldCheckIcon className="w-5 h-5 text-primary-foreground" />
             </div>
@@ -152,7 +157,7 @@ export function DashboardLayout({
 
           <div className="flex items-center gap-4">
             <LanguageSwitcher />
-            
+
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/50 border border-primary/20">
               <ShieldCheckIcon className="w-4 h-4 text-primary" />
               <span className="text-sm font-medium text-foreground">{healthId}</span>
@@ -162,8 +167,8 @@ export function DashboardLayout({
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">{userName}</p>
-                <Badge 
-                  variant="secondary" 
+                <Badge
+                  variant="secondary"
                   className={cn(
                     'text-xs',
                     userRole === 'Doctor' && 'bg-primary/10 text-primary border-primary/20'

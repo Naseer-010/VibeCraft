@@ -9,18 +9,44 @@ import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Shield, Bell, Lock, User, Mail, Phone, Briefcase, GraduationCap, FileCheck, Calendar, Globe } from 'lucide-react'
+import { Shield, Bell, Lock, User, Mail, Phone, Briefcase, GraduationCap, FileCheck, Calendar, Globe, Loader2 } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/language-context'
 import { languages, type Language } from '@/lib/i18n/translations'
+import { useAuth } from '@/hooks/useAuth'
+import { DoctorProfile } from '@/lib/api'
 
 export default function DoctorSettingsPage() {
   const { language, setLanguage, t } = useLanguage()
-  
+  const { isLoading, user, profile } = useAuth('DOCTOR')
+  const doctorProfile = profile as DoctorProfile | null
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading settings...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const userName = doctorProfile
+    ? `Dr. ${doctorProfile.first_name} ${doctorProfile.last_name}`
+    : user?.name || 'Doctor'
+  const healthId = doctorProfile?.doctor_id || user?.doctor_id || 'N/A'
+  const firstName = doctorProfile?.first_name || ''
+  const lastName = doctorProfile?.last_name || ''
+  const email = doctorProfile?.email || user?.email || ''
+  const phone = doctorProfile?.phone || ''
+  const medicalLicense = doctorProfile?.medical_license || ''
+  const hospital = doctorProfile?.hospital || ''
+
   return (
     <DashboardLayout
-      userName="Dr. Sarah Mitchell"
+      userName={userName}
       userRole="Doctor"
-      healthId="HID-DOC-8X2Y"
+      healthId={healthId}
       currentPage="/dashboard/doctor/settings"
     >
       <div className="space-y-6 max-w-4xl">
@@ -72,11 +98,11 @@ export default function DoctorSettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="first-name">First Name</Label>
-                <Input id="first-name" defaultValue="Sarah" />
+                <Input id="first-name" defaultValue={firstName} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="last-name">Last Name</Label>
-                <Input id="last-name" defaultValue="Mitchell" />
+                <Input id="last-name" defaultValue={lastName} />
               </div>
             </div>
 
@@ -84,7 +110,7 @@ export default function DoctorSettingsPage() {
               <Label htmlFor="license">Medical License Number</Label>
               <div className="relative">
                 <FileCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="license" className="pl-10" defaultValue="ML-789456123" disabled />
+                <Input id="license" className="pl-10" defaultValue={medicalLicense} disabled />
               </div>
               <p className="text-xs text-muted-foreground">Contact support to update license number</p>
             </div>
@@ -121,7 +147,7 @@ export default function DoctorSettingsPage() {
 
             <div className="space-y-2">
               <Label htmlFor="hospital">Hospital/Clinic Affiliation</Label>
-              <Input id="hospital" defaultValue="City Medical Center" />
+              <Input id="hospital" defaultValue={hospital} />
             </div>
 
             <Button className="bg-primary text-primary-foreground">Save Changes</Button>
@@ -142,7 +168,7 @@ export default function DoctorSettingsPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="email" type="email" className="pl-10" defaultValue="dr.mitchell@hospital.com" />
+                <Input id="email" type="email" className="pl-10" defaultValue={email} />
               </div>
             </div>
 
@@ -150,14 +176,14 @@ export default function DoctorSettingsPage() {
               <Label htmlFor="phone">Phone Number</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="phone" type="tel" className="pl-10" defaultValue="+1 (555) 789-0123" />
+                <Input id="phone" type="tel" className="pl-10" defaultValue={phone} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="bio">Professional Bio</Label>
-              <Textarea 
-                id="bio" 
+              <Textarea
+                id="bio"
                 rows={4}
                 defaultValue="Board-certified cardiologist with 15 years of experience in cardiovascular care and interventional procedures."
                 className="resize-none"

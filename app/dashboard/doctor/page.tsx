@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DashboardLayout } from '@/components/dashboard/dashboard-layout'
 import { MedicalTimeline } from '@/components/dashboard/medical-timeline'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Search, ShieldCheck, FileUp, Award, Loader2 } from 'lucide-react'
+import { Search, ShieldCheck, FileUp, Award, Loader2, Upload, X, FileText } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -41,7 +41,9 @@ export default function DoctorDashboard() {
   // Form state for new record
   const [recordType, setRecordType] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
+  const [document, setDocument] = useState<File | null>(null)
   const [notes, setNotes] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const doctorProfile = profile as DoctorProfile | null
 
@@ -82,7 +84,8 @@ export default function DoctorDashboard() {
         patient_health_id: selectedPatient.health_id,
         record_type: recordType,
         diagnosis,
-        notes
+        notes,
+        document: document || undefined
       })
 
       // Add the new record to the list
@@ -92,6 +95,7 @@ export default function DoctorDashboard() {
       setRecordType('')
       setDiagnosis('')
       setNotes('')
+      setDocument(null)
       setIsAddRecordOpen(false)
     } catch (err) {
       console.error('Failed to create record:', err)
@@ -274,6 +278,58 @@ export default function DoctorDashboard() {
                         />
                       </div>
 
+                      <div className="space-y-2">
+                        <Label>Upload Document (Optional)</Label>
+                        <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4">
+                          {/* Hidden file input */}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.png,.jpg,.jpeg,.dcm"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) setDocument(file)
+                            }}
+                          />
+                          {document ? (
+                            <div className="flex items-center justify-between p-2 bg-accent/50 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-primary" />
+                                <div>
+                                  <p className="text-sm font-medium truncate max-w-[200px]">{document.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {(document.size / 1024 / 1024).toFixed(2)} MB
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setDocument(null)
+                                  if (fileInputRef.current) {
+                                    fileInputRef.current.value = ''
+                                  }
+                                }}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={() => fileInputRef.current?.click()}
+                              className="flex flex-col items-center cursor-pointer py-6 hover:bg-accent/30 rounded-lg transition-colors"
+                            >
+                              <Upload className="w-10 h-10 text-muted-foreground mb-2" />
+                              <span className="text-sm font-medium text-foreground">Click to upload</span>
+                              <span className="text-xs text-muted-foreground mt-1">PDF, Images, DICOM up to 10MB</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <Button
                         className="w-full bg-primary text-primary-foreground"
                         onClick={handleAddRecord}
@@ -331,6 +387,6 @@ export default function DoctorDashboard() {
           </>
         )}
       </div>
-    </DashboardLayout>
+    </DashboardLayout >
   )
 }

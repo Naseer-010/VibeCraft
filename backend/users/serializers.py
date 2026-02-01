@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
-from .models import PatientProfile, DoctorProfile
+from .models import PatientProfile, DoctorProfile, AccessRequest
 
 User = get_user_model()
 
@@ -150,15 +150,26 @@ class PatientProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     phone = serializers.CharField(source='user.phone', required=False)
     blockchain_id = serializers.CharField(source='user.blockchain_id', read_only=True)
+    profile_picture_url = serializers.SerializerMethodField()
     
     class Meta:
         model = PatientProfile
         fields = [
             'health_id', 'first_name', 'last_name', 'age',
-            'email', 'phone', 'profile_cid', 'blockchain_id',
+            'email', 'phone', 'profile_picture', 'profile_picture_url',
+            'profile_cid', 'blockchain_id',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['health_id', 'profile_cid', 'blockchain_id', 'created_at', 'updated_at']
+        read_only_fields = ['health_id', 'profile_picture_url', 'profile_cid', 'blockchain_id', 'created_at', 'updated_at']
+    
+    def get_profile_picture_url(self, obj):
+        """Get full URL for profile picture."""
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
@@ -168,16 +179,18 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source='user.phone', required=False)
     blockchain_id = serializers.CharField(source='user.blockchain_id', read_only=True)
     certificate_url = serializers.SerializerMethodField()
+    profile_picture_url = serializers.SerializerMethodField()
     
     class Meta:
         model = DoctorProfile
         fields = [
             'doctor_id', 'first_name', 'last_name', 'medical_license',
             'specialization', 'hospital', 'is_verified',
-            'email', 'phone', 'certificate_cid', 'certificate_url',
+            'email', 'phone', 'profile_picture', 'profile_picture_url',
+            'certificate_cid', 'certificate_url',
             'profile_cid', 'blockchain_id', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['doctor_id', 'is_verified', 'certificate_cid', 'certificate_url', 
+        read_only_fields = ['doctor_id', 'is_verified', 'profile_picture_url', 'certificate_cid', 'certificate_url', 
                           'profile_cid', 'blockchain_id', 'created_at', 'updated_at']
     
     def get_certificate_url(self, obj):
@@ -186,6 +199,15 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             from django.conf import settings
             gateway = getattr(settings, 'PINATA_GATEWAY', 'https://gateway.pinata.cloud/ipfs/')
             return f"{gateway}{obj.certificate_cid}"
+        return None
+    
+    def get_profile_picture_url(self, obj):
+        """Get full URL for profile picture."""
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
         return None
 
 
@@ -204,3 +226,91 @@ class UserProfileSerializer(serializers.Serializer):
                 'profile': DoctorProfileSerializer(instance.doctor_profile).data
             }
         return {'role': instance.role, 'email': instance.email}
+
+
+class AccessRequestSerializer(serializers.ModelSerializer):
+    """Serializer for access requests."""
+    
+    patient_name = serializers.CharField(source='patient.full_name', read_only=True)
+    patient_health_id = serializers.CharField(source='patient.health_id', read_only=True)
+    doctor_name = serializers.SerializerMethodField()
+    doctor_hospital = serializers.SerializerMethodField()
+    access_type_display = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = AccessRequest
+        fields = [
+            'id', 'patient_name', 'patient_health_id',
+            'doctor_name', 'doctor_hospital', 'doctor_id_requested',
+            'access_type', 'access_type_display',
+            'status', 'status_display',
+            'granted_at', 'expires_at', 'revoked_at'
+        ]
+        read_only_fields = ['id', 'granted_at', 'revoked_at']
+    
+    def get_doctor_name(self, obj):
+        if obj.doctor:
+            return obj.doctor.full_name
+        return obj.doctor_id_requested or 'Not specified'
+    
+    def get_doctor_hospital(self, obj):
+        if obj.doctor:
+            return obj.doctor.hospital
+        return None
+    
+    def get_access_type_display(self, obj):
+        return dict(AccessRequest.ACCESS_TYPE_CHOICES).get(obj.access_type, obj.access_type)
+    
+    def get_status_display(self, obj):
+        return dict(AccessRequest.STATUS_CHOICES).get(obj.status, obj.status)
+
+
+class CreateAccessRequestSerializer(serializers.Serializer):
+    """Serializer for creating access requests."""
+    
+    doctor_id = serializers.CharField(required=False, allow_blank=True)
+    access_type = serializers.ChoiceField(
+        choices=['FULL', 'TEMPORARY', 'EMERGENCY'],
+        default='FULL'
+    )
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        
+        if user.role != 'PATIENT' or not hasattr(user, 'patient_profile'):
+            raise serializers.ValidationError("Only patients can create access requests")
+        
+        patient = user.patient_profile
+        doctor_id = validated_data.get('doctor_id', '').strip()
+        access_type = validated_data.get('access_type', 'FULL')
+        
+        # Try to find the doctor
+        doctor = None
+        if doctor_id:
+            try:
+                doctor = DoctorProfile.objects.get(doctor_id=doctor_id)
+            except DoctorProfile.DoesNotExist:
+                pass  # Save the doctor_id_requested for later
+        
+        # Check for existing request
+        if doctor:
+            existing = AccessRequest.objects.filter(patient=patient, doctor=doctor).first()
+            if existing:
+                # Update existing request
+                existing.access_type = access_type
+                existing.status = 'APPROVED'
+                existing.save()
+                return existing
+        
+        # Create new access request
+        access_request = AccessRequest.objects.create(
+            patient=patient,
+            doctor=doctor,
+            doctor_id_requested=doctor_id if not doctor else '',
+            access_type=access_type,
+            status='APPROVED'  # Auto-approve for now
+        )
+        
+        return access_request
+

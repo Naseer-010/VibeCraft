@@ -12,6 +12,8 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     PatientProfileSerializer,
     DoctorProfileSerializer,
+    AccessRequestSerializer,
+    CreateAccessRequestSerializer,
 )
 
 User = get_user_model()
@@ -62,7 +64,7 @@ class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        serializer = UserProfileSerializer(request.user)
+        serializer = UserProfileSerializer(request.user, context={'request': request})
         return Response(serializer.data)
     
     def put(self, request):
@@ -72,13 +74,15 @@ class ProfileView(APIView):
             serializer = PatientProfileSerializer(
                 user.patient_profile, 
                 data=request.data, 
-                partial=True
+                partial=True,
+                context={'request': request}
             )
         elif user.role == 'DOCTOR' and hasattr(user, 'doctor_profile'):
             serializer = DoctorProfileSerializer(
                 user.doctor_profile, 
                 data=request.data, 
-                partial=True
+                partial=True,
+                context={'request': request}
             )
         else:
             return Response(
@@ -203,4 +207,89 @@ class IPFSVerifyView(APIView):
                 "cid": cid,
                 "error": result.get('error', 'Verification failed')
             }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AccessRequestView(APIView):
+    """Manage access requests between patients and doctors."""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get access requests for current user."""
+        from .models import AccessRequest
+        
+        user = request.user
+        
+        if user.role == 'PATIENT' and hasattr(user, 'patient_profile'):
+            # Get access requests sent by this patient
+            requests = AccessRequest.objects.filter(patient=user.patient_profile)
+            serializer = AccessRequestSerializer(requests, many=True)
+            return Response(serializer.data)
+            
+        elif user.role == 'DOCTOR' and hasattr(user, 'doctor_profile'):
+            # Get access requests received by this doctor (approved and revoked)
+            requests = AccessRequest.objects.filter(
+                doctor=user.doctor_profile,
+                status__in=['APPROVED', 'REVOKED']
+            )
+            serializer = AccessRequestSerializer(requests, many=True)
+            return Response(serializer.data)
+        
+        return Response(
+            {"error": "Invalid user role"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    def post(self, request):
+        """Create a new access request (patients only)."""
+        if request.user.role != 'PATIENT':
+            return Response(
+                {"error": "Only patients can create access requests"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CreateAccessRequestSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            access_request = serializer.save()
+            return Response(
+                AccessRequestSerializer(access_request).data,
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RevokeAccessView(APIView):
+    """Revoke an access request (patients only)."""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, request_id):
+        from .models import AccessRequest
+        from django.utils import timezone
+        
+        if request.user.role != 'PATIENT':
+            return Response(
+                {"error": "Only patients can revoke access"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            access_request = AccessRequest.objects.get(
+                id=request_id,
+                patient=request.user.patient_profile
+            )
+            access_request.status = 'REVOKED'
+            access_request.revoked_at = timezone.now()
+            access_request.save()
+            
+            return Response({"message": "Access revoked successfully"})
+        except AccessRequest.DoesNotExist:
+            return Response(
+                {"error": "Access request not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 

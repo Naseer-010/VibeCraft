@@ -65,6 +65,8 @@ export interface PatientProfile {
     age: number | null;
     email: string;
     phone: string;
+    profile_picture?: string | null;
+    profile_picture_url?: string | null;
 }
 
 export interface DoctorProfile {
@@ -77,6 +79,8 @@ export interface DoctorProfile {
     is_verified: boolean;
     email: string;
     phone: string;
+    profile_picture?: string | null;
+    profile_picture_url?: string | null;
 }
 
 export interface MedicalRecord {
@@ -264,10 +268,42 @@ export async function getProfile(): Promise<{ role: string; profile: PatientProf
     return response.json();
 }
 
-export async function updateProfile(data: Partial<PatientProfile | DoctorProfile>): Promise<PatientProfile | DoctorProfile> {
-    const response = await fetchWithAuth('/auth/profile/', {
+export async function updateProfile(
+    data: Partial<PatientProfile | DoctorProfile> & { profile_picture?: File }
+): Promise<PatientProfile | DoctorProfile> {
+    let body: FormData | string;
+    let headers: HeadersInit = {};
+
+    // Check if we have a file to upload
+    const hasFile = data.profile_picture && typeof data.profile_picture === 'object' && 'name' in data.profile_picture;
+    if (hasFile) {
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                if (typeof value === 'object' && 'name' in value) {
+                    formData.append(key, value as Blob);
+                } else {
+                    formData.append(key, String(value));
+                }
+            }
+        });
+        body = formData;
+        // Don't set Content-Type, let browser set it with boundary
+    } else {
+        // Remove profile_picture if it's not a File (it's a URL string)
+        const { profile_picture, profile_picture_url, ...rest } = data as any;
+        body = JSON.stringify(rest);
+        headers = { 'Content-Type': 'application/json' };
+    }
+
+    const token = getAccessToken();
+    const response = await fetch(`${API_BASE_URL}/auth/profile/`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            ...headers
+        },
+        body
     });
 
     if (!response.ok) {
@@ -304,10 +340,44 @@ export async function createRecord(data: {
     record_type: string;
     diagnosis: string;
     notes: string;
+    document?: File;
 }): Promise<MedicalRecord> {
+    const token = getAccessToken();
+
+    // Use FormData if document is provided
+    if (data.document) {
+        const formData = new FormData();
+        formData.append('patient_health_id', data.patient_health_id);
+        formData.append('record_type', data.record_type);
+        formData.append('diagnosis', data.diagnosis);
+        formData.append('notes', data.notes);
+        formData.append('document', data.document);
+
+        const response = await fetch(`${API_BASE_URL}/records/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to create record');
+        }
+
+        return response.json();
+    }
+
+    // Use JSON for text-only records
     const response = await fetchWithAuth('/records/', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+            patient_health_id: data.patient_health_id,
+            record_type: data.record_type,
+            diagnosis: data.diagnosis,
+            notes: data.notes,
+        }),
     });
 
     if (!response.ok) {
@@ -328,6 +398,25 @@ export async function toggleRecordVisibility(recordId: number): Promise<{ is_vis
     }
 
     return response.json();
+}
+
+export async function getRecord(recordId: number): Promise<MedicalRecord> {
+    const response = await fetchWithAuth(`/records/${recordId}/`);
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch record');
+    }
+
+    return response.json();
+}
+
+export function getDocumentUrl(documentPath: string): string {
+    // Handle both relative and absolute URLs
+    if (documentPath.startsWith('http')) {
+        return documentPath;
+    }
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:8000';
+    return `${baseUrl}${documentPath}`;
 }
 
 export async function searchPatient(healthId: string): Promise<{
@@ -364,3 +453,64 @@ export async function getPatientRecords(healthId: string): Promise<{
 export function isAuthenticated(): boolean {
     return !!getAccessToken();
 }
+
+// Access Request Types
+export interface AccessRequest {
+    id: number;
+    patient_name: string;
+    patient_health_id: string;
+    doctor_name: string;
+    doctor_hospital: string | null;
+    doctor_id_requested: string;
+    access_type: 'FULL' | 'TEMPORARY' | 'EMERGENCY';
+    access_type_display: string;
+    status: 'PENDING' | 'APPROVED' | 'REVOKED';
+    status_display: string;
+    granted_at: string;
+    expires_at: string | null;
+    revoked_at: string | null;
+}
+
+// Get access requests for current user
+export async function getAccessRequests(): Promise<AccessRequest[]> {
+    const response = await fetchWithAuth('/auth/access/');
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch access requests');
+    }
+
+    return response.json();
+}
+
+// Create access request (patient only)
+export async function createAccessRequest(data: {
+    doctor_id?: string;
+    access_type: 'FULL' | 'TEMPORARY' | 'EMERGENCY';
+}): Promise<AccessRequest> {
+    const response = await fetchWithAuth('/auth/access/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create access request');
+    }
+
+    return response.json();
+}
+
+// Revoke access request (patient only)
+export async function revokeAccess(requestId: number): Promise<{ message: string }> {
+    const response = await fetchWithAuth(`/auth/access/${requestId}/revoke/`, {
+        method: 'POST',
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to revoke access');
+    }
+
+    return response.json();
+}
+

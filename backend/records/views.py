@@ -42,6 +42,28 @@ class MedicalRecordListView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Check if patient has granted access to this doctor
+        patient_health_id = request.data.get('patient_health_id')
+        if patient_health_id:
+            try:
+                from users.models import AccessRequest
+                patient = PatientProfile.objects.get(health_id=patient_health_id)
+                
+                # Check for an approved access request from this patient to this doctor
+                has_access = AccessRequest.objects.filter(
+                    patient=patient,
+                    doctor=request.user.doctor_profile,
+                    status='APPROVED'
+                ).exists()
+                
+                if not has_access:
+                    return Response(
+                        {"error": "You do not have access to this patient's records. The patient must grant you access first."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            except PatientProfile.DoesNotExist:
+                pass  # Let the serializer handle the validation error
+        
         serializer = CreateMedicalRecordSerializer(
             data=request.data,
             context={'request': request}
@@ -140,18 +162,27 @@ class PatientRecordsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Only show visible records to doctors (except those they created)
-        records = MedicalRecord.objects.filter(
-            patient=patient
-        ).filter(
-            # Show if visible OR created by this doctor
-            models__in=[
-                MedicalRecord.objects.filter(is_visible=True),
-                MedicalRecord.objects.filter(doctor=request.user.doctor_profile)
-            ]
-        ).distinct()
+        # Check if patient has granted access to this doctor
+        from users.models import AccessRequest
+        has_explicit_access = AccessRequest.objects.filter(
+            patient=patient,
+            doctor=request.user.doctor_profile,
+            status='APPROVED'
+        ).exists()
         
-        # Simpler approach - filter in code
+        # Also allow if doctor has created records for this patient (legacy access)
+        has_record_access = MedicalRecord.objects.filter(
+            patient=patient,
+            doctor=request.user.doctor_profile
+        ).exists()
+        
+        if not has_explicit_access and not has_record_access:
+            return Response(
+                {"error": "You do not have access to this patient's records. The patient must grant you access first."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Show all visible records plus ones created by this doctor
         all_records = MedicalRecord.objects.filter(patient=patient)
         visible_records = [
             r for r in all_records 
@@ -167,3 +198,4 @@ class PatientRecordsView(APIView):
             },
             "records": serializer.data
         })
+
