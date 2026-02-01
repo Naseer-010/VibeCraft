@@ -119,3 +119,8 @@ CORS_ALLOWED_ORIGINS = [
     os.getenv('FRONTEND_URL', 'http://localhost:3000'),
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# Pinata IPFS Settings
+PINATA_API_KEY = os.getenv('PINATA_API_KEY', '')
+PINATA_SECRET_KEY = os.getenv('PINATA_SECRET_KEY', '')
+PINATA_GATEWAY = os.getenv('PINATA_GATEWAY', 'https://gateway.pinata.cloud/ipfs/')

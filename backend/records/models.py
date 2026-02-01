@@ -36,6 +36,21 @@ class MedicalRecord(models.Model):
         null=True
     )
     
+    # IPFS CID for the uploaded document
+    ipfs_cid = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="IPFS CID for the medical document"
+    )
+    # IPFS CID for record metadata JSON
+    ipfs_metadata_cid = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="IPFS CID for record metadata"
+    )
+    
     is_visible = models.BooleanField(default=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

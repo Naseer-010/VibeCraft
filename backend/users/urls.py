@@ -7,6 +7,7 @@ from .views import (
     ProfileView,
     PatientSearchView,
     DashboardStatsView,
+    IPFSVerifyView,
 )
 
 urlpatterns = [
@@ -26,5 +27,7 @@ urlpatterns = [
     
     # Patient search (for doctors)
     path('patients/<str:health_id>/', PatientSearchView.as_view(), name='patient_search'),
+    
+    # IPFS verification
+    path('ipfs/verify/<str:cid>/', IPFSVerifyView.as_view(), name='ipfs_verify'),
 ]
-

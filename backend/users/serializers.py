@@ -22,17 +22,20 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         data['role'] = user.role
         data['email'] = user.email
+        data['blockchain_id'] = user.blockchain_id
         
         # Add profile-specific data
         if user.role == 'PATIENT' and hasattr(user, 'patient_profile'):
             profile = user.patient_profile
             data['name'] = profile.full_name
             data['health_id'] = profile.health_id
+            data['profile_cid'] = profile.profile_cid
         elif user.role == 'DOCTOR' and hasattr(user, 'doctor_profile'):
             profile = user.doctor_profile
             data['name'] = profile.full_name
             data['doctor_id'] = profile.doctor_id
             data['is_verified'] = profile.is_verified
+            data['certificate_cid'] = profile.certificate_cid
         
         return data
 
@@ -60,6 +63,9 @@ class PatientRegisterSerializer(serializers.Serializer):
             phone=validated_data.get('phone', '')
         )
         
+        # Generate blockchain ID for user
+        user.generate_blockchain_id()
+        
         PatientProfile.objects.create(
             user=user,
             first_name=validated_data['first_name'],
@@ -81,6 +87,7 @@ class DoctorRegisterSerializer(serializers.Serializer):
     specialization = serializers.CharField(max_length=100)
     hospital = serializers.CharField(max_length=200)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    certificate = serializers.FileField(required=False, allow_null=True)
     
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -93,6 +100,10 @@ class DoctorRegisterSerializer(serializers.Serializer):
         return value
     
     def create(self, validated_data):
+        from .ipfs_service import ipfs_service
+        
+        certificate_file = validated_data.pop('certificate', None)
+        
         user = User.objects.create_user(
             email=validated_data['email'],
             password=validated_data['password'],
@@ -100,7 +111,10 @@ class DoctorRegisterSerializer(serializers.Serializer):
             phone=validated_data.get('phone', '')
         )
         
-        DoctorProfile.objects.create(
+        # Generate blockchain ID for user
+        user.generate_blockchain_id()
+        
+        doctor_profile = DoctorProfile.objects.create(
             user=user,
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
@@ -108,6 +122,24 @@ class DoctorRegisterSerializer(serializers.Serializer):
             specialization=validated_data['specialization'],
             hospital=validated_data['hospital']
         )
+        
+        # Upload certificate to IPFS if provided
+        if certificate_file:
+            try:
+                # Save the file locally first
+                doctor_profile.certificate = certificate_file
+                doctor_profile.save(update_fields=['certificate'])
+                
+                # Upload to IPFS
+                result = ipfs_service.upload_file(
+                    certificate_file,
+                    filename=certificate_file.name
+                )
+                if result.get('success'):
+                    doctor_profile.certificate_cid = result.get('cid')
+                    doctor_profile.save(update_fields=['certificate_cid'])
+            except Exception:
+                pass  # Certificate saved locally, IPFS upload optional
         
         return user
 
@@ -117,14 +149,16 @@ class PatientProfileSerializer(serializers.ModelSerializer):
     
     email = serializers.EmailField(source='user.email', read_only=True)
     phone = serializers.CharField(source='user.phone', required=False)
+    blockchain_id = serializers.CharField(source='user.blockchain_id', read_only=True)
     
     class Meta:
         model = PatientProfile
         fields = [
             'health_id', 'first_name', 'last_name', 'age',
-            'email', 'phone', 'created_at', 'updated_at'
+            'email', 'phone', 'profile_cid', 'blockchain_id',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['health_id', 'created_at', 'updated_at']
+        read_only_fields = ['health_id', 'profile_cid', 'blockchain_id', 'created_at', 'updated_at']
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
@@ -132,15 +166,27 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     
     email = serializers.EmailField(source='user.email', read_only=True)
     phone = serializers.CharField(source='user.phone', required=False)
+    blockchain_id = serializers.CharField(source='user.blockchain_id', read_only=True)
+    certificate_url = serializers.SerializerMethodField()
     
     class Meta:
         model = DoctorProfile
         fields = [
             'doctor_id', 'first_name', 'last_name', 'medical_license',
             'specialization', 'hospital', 'is_verified',
-            'email', 'phone', 'created_at', 'updated_at'
+            'email', 'phone', 'certificate_cid', 'certificate_url',
+            'profile_cid', 'blockchain_id', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['doctor_id', 'is_verified', 'created_at', 'updated_at']
+        read_only_fields = ['doctor_id', 'is_verified', 'certificate_cid', 'certificate_url', 
+                          'profile_cid', 'blockchain_id', 'created_at', 'updated_at']
+    
+    def get_certificate_url(self, obj):
+        """Get IPFS gateway URL for certificate."""
+        if obj.certificate_cid:
+            from django.conf import settings
+            gateway = getattr(settings, 'PINATA_GATEWAY', 'https://gateway.pinata.cloud/ipfs/')
+            return f"{gateway}{obj.certificate_cid}"
+        return None
 
 
 class UserProfileSerializer(serializers.Serializer):

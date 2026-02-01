@@ -48,6 +48,15 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
     phone = models.CharField(max_length=20, blank=True)
     
+    # Blockchain/IPFS identity
+    blockchain_id = models.CharField(
+        max_length=64, 
+        unique=True, 
+        null=True, 
+        blank=True,
+        help_text="SHA256 hash serving as blockchain identity"
+    )
+    
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
     
@@ -55,6 +64,14 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.email
+    
+    def generate_blockchain_id(self):
+        """Generate blockchain ID from email and creation time."""
+        from .ipfs_service import generate_blockchain_id
+        if not self.blockchain_id and self.date_joined:
+            self.blockchain_id = generate_blockchain_id(self.email, self.date_joined)
+            self.save(update_fields=['blockchain_id'])
+        return self.blockchain_id
 
 
 class PatientProfile(models.Model):
@@ -72,6 +89,13 @@ class PatientProfile(models.Model):
         max_length=20, 
         unique=True, 
         default=generate_health_id
+    )
+    # IPFS profile metadata CID
+    profile_cid = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="IPFS CID for patient profile metadata"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -107,6 +131,20 @@ class DoctorProfile(models.Model):
         upload_to='doctor_certificates/', 
         blank=True, 
         null=True
+    )
+    # IPFS CID for doctor certificate
+    certificate_cid = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="IPFS CID for uploaded certificate"
+    )
+    # IPFS profile metadata CID
+    profile_cid = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="IPFS CID for doctor profile metadata"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

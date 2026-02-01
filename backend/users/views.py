@@ -33,7 +33,8 @@ class PatientRegisterView(APIView):
             return Response({
                 "message": "Patient registered successfully",
                 "health_id": user.patient_profile.health_id,
-                "email": user.email
+                "email": user.email,
+                "blockchain_id": user.blockchain_id
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -49,7 +50,9 @@ class DoctorRegisterView(APIView):
             return Response({
                 "message": "Doctor registered successfully. Verification pending.",
                 "doctor_id": user.doctor_profile.doctor_id,
-                "email": user.email
+                "email": user.email,
+                "blockchain_id": user.blockchain_id,
+                "certificate_cid": user.doctor_profile.certificate_cid
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -176,3 +179,28 @@ class PatientSearchView(APIView):
                 {"error": "Patient not found"}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class IPFSVerifyView(APIView):
+    """Verify that a CID exists and is accessible on IPFS."""
+    permission_classes = [AllowAny]  # Public verification
+    
+    def get(self, request, cid):
+        from .ipfs_service import ipfs_service
+        
+        result = ipfs_service.verify_cid(cid)
+        
+        if result.get('success'):
+            return Response({
+                "cid": cid,
+                "accessible": result.get('accessible', False),
+                "content_type": result.get('content_type'),
+                "content_length": result.get('content_length'),
+                "ipfs_url": ipfs_service.get_ipfs_url(cid)
+            })
+        else:
+            return Response({
+                "cid": cid,
+                "error": result.get('error', 'Verification failed')
+            }, status=status.HTTP_400_BAD_REQUEST)
+
