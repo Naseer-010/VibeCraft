@@ -5,13 +5,14 @@ import React from "react"
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Lock, Mail, Phone, Shield, User } from 'lucide-react'
+import { Lock, Mail, Phone, Shield, User, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { OTPInput } from '@/components/auth/otp-input'
+import { loginUser } from '@/lib/api'
 
 function LoginPageContent() {
   const searchParams = useSearchParams()
@@ -21,15 +22,27 @@ function LoginPageContent() {
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [medicalLicense, setMedicalLicense] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Simulate authentication - in production this would validate credentials
-    // Redirect based on user type
-    if (userType === 'doctor') {
-      window.location.href = '/dashboard/doctor'
-    } else {
-      window.location.href = '/dashboard/patient'
+    setIsLoading(true)
+    setError('')
+
+    try {
+      const user = await loginUser(email, password)
+
+      // Redirect based on role
+      if (user.role === 'DOCTOR') {
+        window.location.href = '/dashboard/doctor'
+      } else {
+        window.location.href = '/dashboard/patient'
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -44,8 +57,8 @@ function LoginPageContent() {
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-balance">HealthSecure</h1>
           <p className="text-muted-foreground text-balance">
-            {userType === 'doctor' 
-              ? 'Doctor portal - Access patient records securely' 
+            {userType === 'doctor'
+              ? 'Doctor portal - Access patient records securely'
               : 'Your medical records are protected by secure digital identity'}
           </p>
         </div>
@@ -56,8 +69,8 @@ function LoginPageContent() {
               {userType === 'doctor' ? 'Doctor Login' : 'Patient Login'}
             </CardTitle>
             <CardDescription className="text-center">
-              {userType === 'doctor' 
-                ? 'Sign in with your medical credentials' 
+              {userType === 'doctor'
+                ? 'Sign in with your medical credentials'
                 : 'Sign in to access your lifetime health history'}
             </CardDescription>
           </CardHeader>
@@ -201,8 +214,21 @@ function LoginPageContent() {
                 </>
               )}
 
-              <Button type="submit" className="w-full" size="lg">
-                {userType === 'doctor' ? 'Login to Doctor Portal' : 'Login with Secure Health ID'}
+              {error && (
+                <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+                  {error}
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  userType === 'doctor' ? 'Login to Doctor Portal' : 'Login with Secure Health ID'
+                )}
               </Button>
 
               <div className="text-center text-sm">
@@ -215,8 +241,8 @@ function LoginPageContent() {
               </div>
 
               <div className="text-center">
-                <Link 
-                  href={userType === 'doctor' ? '/login?type=patient' : '/login?type=doctor'} 
+                <Link
+                  href={userType === 'doctor' ? '/login?type=patient' : '/login?type=doctor'}
                   className="text-sm text-muted-foreground hover:text-foreground"
                 >
                   Switch to {userType === 'doctor' ? 'Patient' : 'Doctor'} Login
